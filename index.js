@@ -27,6 +27,7 @@ function* buildTestTree() {
 function* buildTestGrants() {
     yield db.Grant.create({ userId: 1, ReferenceId: R3.id, role: 'A'});
     yield db.Grant.create({ userId: 1, ReferenceId: R42.id, role: 'B'});
+    yield db.Grant.create({ userId: 1, ReferenceId: R652.id, role: 'C'});
 }
 
 function logTree(items, level) {
@@ -37,13 +38,18 @@ function logTree(items, level) {
 }
 
 co(function* () {
-    yield db.sequelize.sync({force: true});
-    yield buildTestTree();
-    yield buildTestGrants();
+    try {
+        yield db.sequelize.sync({force: true});
+        yield buildTestTree();
+        yield buildTestGrants();
+
+        let rootChildren = yield db.Reference.getChildren(R2.id, 1, false);
+
+        console.log(JSON.stringify(rootChildren, null, '\t'));
+        logTree(rootChildren, 0);
 
 
-    let rootChildren = yield db.Reference.getChildren(root.id, 1);
-
-    logTree([rootChildren], 0);
-
+    } catch (ex) {
+        console.error(ex.stack);
+    }
 });
