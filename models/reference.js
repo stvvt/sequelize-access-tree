@@ -43,7 +43,7 @@ module.exports = function (sequelize, DataTypes) {
 					logging: console.log
 				});
 
-				reduceTree(tree);
+				reduceTree.apply(tree);
 
 				if (!recursive) {
 					tree.children = tree.dataValues.children = tree.children.map(function (c) { c.dataValues.children = c.children = undefined; return c; });
@@ -64,20 +64,20 @@ module.exports = function (sequelize, DataTypes) {
 	 * @param root
 	 * @returns {Array.<T>|string|Buffer|*}
 	 */
-	function reduceTree(root) {
-		let childrenGrants = root.Grants;
+	function reduceTree() {
+		let childrenGrants = this.Grants;
 
-		if (root.children) {
-			root.children = root.children.filter(function (node) {
+		if (this.children) {
+			this.children = this.children.filter(node => {
 				// Every node inherits its parent's grants
 				node.Grants = node.Grants.concat(
-					root.Grants.map(function (grant) {
+					this.Grants.map(grant => {
 						let inherited = Reference.sequelize.models.Grant.build(grant.dataValues);
 						inherited.inherited = true;
 						return inherited;
 					})
 				);
-				let cg = node.Grants.concat(reduceTree(node));
+				let cg = node.Grants.concat(reduceTree.apply(node));
 
 				childrenGrants = childrenGrants.concat(cg);
 
@@ -87,5 +87,4 @@ module.exports = function (sequelize, DataTypes) {
 
 		return childrenGrants;
 	}
-
 };
