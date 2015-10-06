@@ -9,9 +9,9 @@ let root, R2, R3, R42, R52, R652, R742;
  * * Root []
  * ! * R2 []
  * ! ! * R42 [ 'B' ]
- * ! ! ! * R742 []
+ * ! ! ! * R742 [ 'C' ]
  * ! ! * R52 []
- * ! ! ! * R652 []
+ * ! ! ! * R652 [ 'C ' ]
  * ! * R3 [ 'A' ]
  */
 function* buildTestTree() {
@@ -25,9 +25,11 @@ function* buildTestTree() {
 }
 
 function* buildTestGrants() {
-    yield db.Grant.create({ userId: 1, ReferenceId: R3.id, role: 'A'});
-    yield db.Grant.create({ userId: 1, ReferenceId: R42.id, role: 'B'});
-    yield db.Grant.create({ userId: 1, ReferenceId: R652.id, role: 'C'});
+    yield db.Reference.grant({ userId: 1, ReferenceId: R3.id, role: 'A'});
+    yield db.Reference.grant({ userId: 1, ReferenceId: R3.id, role: 'A'});
+    yield db.Reference.grant({ userId: 1, ReferenceId: R42.id, role: 'B'});
+    yield db.Reference.grant({ userId: 1, ReferenceId: R652.id, role: 'C'});
+    yield db.Reference.grant({ userId: 1, ReferenceId: R742.id, role: 'C'});
 }
 
 function logTree(items, level) {
@@ -43,7 +45,7 @@ co(function* () {
         yield buildTestTree();
         yield buildTestGrants();
 
-        let rootChildren = yield db.Reference.getChildren(R2.id, 1, false);
+        let rootChildren = yield db.Reference.getChildren(root.id, 1, true);
 
         console.log(JSON.stringify(rootChildren, null, '\t'));
         logTree(rootChildren, 0);

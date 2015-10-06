@@ -16,7 +16,7 @@ module.exports = function (sequelize, DataTypes) {
 			 * @param {number} userId
 			 * @param {boolean} recursive TRUE - dig down to the leaves; FALSE - direct descendants only
 			 */
-			getChildren: function* getChildren(id, userId, recursive) {
+			*getChildren(id, userId, recursive) {
 				recursive = (typeof recursive === 'undefined') ? true : !!recursive;
 
 				let tree = yield this.find({
@@ -46,10 +46,37 @@ module.exports = function (sequelize, DataTypes) {
 				reduceTree.apply(tree);
 
 				if (!recursive) {
-					tree.children = tree.dataValues.children = tree.children.map(function (c) { c.dataValues.children = c.children = undefined; return c; });
+					tree.children = tree.dataValues.children = tree.children.map(function (c) {
+						c.dataValues.children = c.children = undefined;
+						return c;
+					});
 				}
 
 				return tree.children;
+			},
+
+			*grant(grantData) {
+				let grant = yield sequelize.models.Grant.findOrCreate({
+					defaults: grantData,
+					where: grantData
+				});
+				let grantInstance = grant[0], grantCreated = grant[1];
+
+				if (grantCreated) {
+					// Update ancestor inherit counters
+					yield updateInheritCounts.call(this, grantData.ReferenceId, grantData.userId, +1);
+				}
+			},
+
+			*revoke(grantData) {
+				let revokedCount = yield sequelize.models.Grant.destroy({
+					where: grantData
+				});
+
+				if (revokedCount > 0) {
+					// Update ancestor inherit counters
+					yield updateInheritCounts.call(this, grantData.ReferenceId, grantData.userId, -1);
+				}
 			}
 		}
 	});
@@ -57,6 +84,48 @@ module.exports = function (sequelize, DataTypes) {
 	Reference.isHierarchy();
 
 	return Reference;
+
+	function* updateInheritCounts(referenceId, userId, offset) {
+		let hierarchy = this.hierarchy,
+			ReferenceAncestors = this.associations[hierarchy.ancestorsAs].through.model,
+			Grant = this.associations.Grants.target,
+			throughKey = hierarchy.throughKey,
+			throughForeignKey = hierarchy.throughForeignKey,
+			where = {},
+			self = this;
+
+		where[throughKey] = referenceId;
+
+		// Decrement inheritedCount of all grants of grantData.ReferenceId's ancestors for grantData.UserId
+		let ancestors = yield ReferenceAncestors.findAll({
+			where: where,
+			attributes: [throughForeignKey]
+		});
+		let ancestorIds = ancestors.map(r => r.ancestorId);
+
+		for (let i = 0; i < ancestorIds.length; i++) {
+			try {
+				yield Grant.create({
+					ReferenceId: ancestorIds[i],
+					userId: userId,
+					role: '$$inherited',
+					inheritedCount: 1,
+					logging: console.log
+				});
+			} catch (e) {
+				yield Grant.update({
+					inheritedCount: self.sequelize.literal('"inheritedCount" + ' + offset)
+				}, {
+					where: {
+						ReferenceId: ancestorIds[i],
+						userId: userId,
+						role: '$$inherited'
+					},
+					logging: console.log
+				});
+			}
+		}
+	}
 
 	/**
 	 * Populate inherited roles down the tree
