@@ -1,7 +1,7 @@
 'use strict';
 
 module.exports = function (sequelize, DataTypes) {
-	let Grant = sequelize.define('Grant', {
+	return sequelize.define('Grant', {
 		userId: DataTypes.INTEGER,
 		role: DataTypes.STRING,
 		inheritedCount: {
@@ -21,6 +21,4 @@ module.exports = function (sequelize, DataTypes) {
 			fields: ['ReferenceId', 'userId', 'role']
 		}]
 	});
-
-	return Grant;
 };

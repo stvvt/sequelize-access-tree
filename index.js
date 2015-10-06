@@ -48,7 +48,7 @@ co(function* () {
         let rootChildren = yield db.Reference.getChildren(root.id, 1, true);
 
         console.log(JSON.stringify(rootChildren, null, '\t'));
-        logTree(rootChildren, 0);
+        logTree([rootChildren], 0);
 
 
     } catch (ex) {
