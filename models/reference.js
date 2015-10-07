@@ -16,7 +16,7 @@ module.exports = function (sequelize, DataTypes) {
 			 * @param {number} userId
 			 * @param {boolean} recursive TRUE - dig down to the leaves; FALSE - direct descendants only
 			 */
-				*getChildren(id, userId, recursive) {
+			*getChildren(id, userId, recursive) {
 				recursive = (typeof recursive === 'undefined') ? true : !!recursive;
 
 				let tree = yield this.find({
@@ -24,10 +24,22 @@ module.exports = function (sequelize, DataTypes) {
 						id: id
 					},
 					include: [{
+						association: this.associations.ancestors,
+						attributes: ['id'],
+						include: {
+							association: this.associations.Grants,
+							attributes: ['id', 'role', 'createdAt', 'updatedAt', 'ReferenceId'],
+							where: {
+								userId: userId,
+								role: { $ne: '$$inherited' }
+							}
+						}
+					}, {
 						association: this.associations.descendents,
 						hierarchy: true,
 						include: {
 							association: this.associations.Grants,
+							attributes: ['id', 'role', 'createdAt', 'updatedAt', 'ReferenceId'],
 							where: {
 								userId: userId,
 								$or: {
@@ -35,9 +47,13 @@ module.exports = function (sequelize, DataTypes) {
 									inheritedCount: {$gt: 0}
 								}
 							}
+						},
+						where: recursive ? {} : {
+							parentId: id
 						}
 					}, {
 						association: this.associations.Grants,
+						attributes: ['id', 'role', 'createdAt', 'updatedAt', 'ReferenceId'],
 						where: {
 							userId: userId,
 							$or: {
@@ -49,14 +65,8 @@ module.exports = function (sequelize, DataTypes) {
 					logging: console.log
 				});
 
+				applyAncestorGrants.apply(tree);
 				broadcastGrantsToChildren.apply(tree);
-
-				if (!recursive) {
-					tree.children = tree.dataValues.children = tree.children.map(function (c) {
-						c.dataValues.children = c.children = undefined;
-						return c;
-					});
-				}
 
 				return tree;
 			},
@@ -90,6 +100,18 @@ module.exports = function (sequelize, DataTypes) {
 	Reference.isHierarchy();
 
 	return Reference;
+
+	function applyAncestorGrants() {
+		let inherited = this.ancestors.reduce(function (grants, ancestor) {
+			return grants.concat(ancestor.Grants.map(grant => {
+				let inherited = Reference.sequelize.models.Grant.build(grant.dataValues);
+				inherited.inherited = true;
+				return inherited;
+			}));
+		}, []);
+
+		this.Grants = this.Grants.concat(inherited);
+	}
 
 	function* updateInheritCounts(referenceId, userId, offset) {
 		let hierarchy = this.hierarchy,
@@ -131,35 +153,6 @@ module.exports = function (sequelize, DataTypes) {
 				});
 			}
 		}
-	}
-
-	/**
-	 * Populate inherited roles down the tree
-	 *
-	 * @returns {Array.<string>}
-	 */
-	function reduceTree() {
-		let childrenGrants = this.Grants;
-
-		if (this.children) {
-			this.children = this.children.filter(node => {
-				// Every node inherits its parent's grants
-				node.Grants = node.Grants.concat(
-					this.Grants.map(grant => {
-						let inherited = Reference.sequelize.models.Grant.build(grant.dataValues);
-						inherited.inherited = true;
-						return inherited;
-					})
-				);
-				let cg = node.Grants.concat(reduceTree.apply(node));
-
-				childrenGrants = childrenGrants.concat(cg);
-
-				return cg.length > 0;
-			});
-		}
-
-		return childrenGrants;
 	}
 
 	function broadcastGrantsToChildren() {
